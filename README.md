@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/958143181.svg)](https://doi.org/10.5281/zenodo.20287660)
+
 # SOM con SSIM para clasificación de patrones de precipitación — Sector Oriental de Sudamérica Subtropical
 
 Este repositorio contiene el código Python utilizado en el trabajo:
