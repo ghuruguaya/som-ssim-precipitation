@@ -162,7 +162,7 @@ If you use this code, please cite the paper and the archived release:
 > Evaluation of Similarity Metrics for Self-Organizing Maps of Summer
 > Precipitation Anomalies in Eastern Subtropical South America. Under review.
 
-Archived on Zenodo: https://doi.org/10.5281/zenodo.20287660
+Archived on Zenodo: https://doi.org/10.5281/zenodo.22181641
 
 ---
 
