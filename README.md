@@ -1,159 +1,176 @@
-[![DOI](https://zenodo.org/badge/958143181.svg)](https://doi.org/10.5281/zenodo.20287660)
+# som-ssim-precipitation
 
-# SOM con SSIM para clasificación de patrones de precipitación — Sector Oriental de Sudamérica Subtropical
+Code accompanying *"Evaluation of Similarity Metrics for Self-Organizing Maps of
+Summer Precipitation Anomalies in Eastern Subtropical South America"*.
 
-Este repositorio contiene el código Python utilizado en el trabajo:
+Hernández, G., Müller, G. V., Vasconcellos, F. C., Vasconcellos, E. C. (under
+review).
 
-> **"Clasificación de patrones espaciales de anomalía de precipitación estival en el sector oriental de Sudamérica subtropical mediante redes auto-organizativas (SOM) con métrica de similitud estructural (SSIM)"**
-> Hernández, G.; Müller, G. V.; Vasconcellos, F. (en revisión)
+The pipeline classifies monthly summer precipitation anomaly fields over eastern
+subtropical South America with Self-Organizing Maps, comparing four similarity
+metrics for the Best Matching Unit search: Euclidean distance, correlation-based
+distance, and the Structural Similarity Index in its global and sliding-window
+forms.
 
-El pipeline procesa datos CHIRPS mensuales (octubre–marzo, 1981–2024), entrena redes SOM con distintas métricas de similitud (SSIM completo, SSIM simplificado, correlación y distancia euclidiana), evalúa la calidad del agrupamiento y genera las figuras del paper.
-
----
-
-## Estructura del pipeline
-
-```
-1. Preprocesamiento
-   └── normalización_entre_0_y_1.py
-
-2. Análisis de sensibilidad — fase exploratoria (ejecutado localmente)
-   Métricas: SSIM simplificado, correlación, distancia euclidiana
-   Inicializaciones: PCA y aleatoria | Tamaños: 3×3, 4×4, 6×6 | 12 semillas c/u
-   ├── multiseed_SSIM_PCA_mejor_silhuette_3x3_4x4_9x9.py
-   ├── multiseed_SSIM_init_aleat_mejor_silhuette_3x3_4x4_9x9.py
-   ├── multiseed_corr_pca_mejor_silhuette_3x3_4x4_6x6.py
-   ├── multiseed_corr_init_aleat_mejor_silhuette_3x3_4x4_6x6.py
-   ├── multiseed_euclid_PCA_mejor_silhuette_3x3_4x4_9x9.py
-   └── multiseed_euclid_init_aleat_mejor_silhuette_3x3_4x4_9x9.py
-
-3. Entrenamiento final con SSIM completo (ejecutado en clúster Granito)
-   └── som_ssim_granito_fixed.py
-
-4. Métricas de validación
-   ├── calculo_metricas.py                        ← Silhouette, DB, CH post-hoc
-   ├── indice_DBI_CHI.py                          ← DB y CH para análisis multisemilla
-   ├── SSIM_por_nodo.py                           ← Node-mean SSIM (versión simplificada)
-   └── SSIM_por_nodo_y_global_normalizado.py      ← SSIM entre pares de campos por nodo
-
-5. Visualización — Figura 2 del paper (ejecutar en orden)
-   ├── promedio_amon_por_nodo.py                  ← promedio de anomalías por nodo
-   ├── desnormalizar_BMU.py                       ← prototipo del nodo (pesos → mm)
-   ├── mapas_promedios_desnormalizados_SSIMcompleto_4x4.py  ← ensambla filas
-   └── union_de_mapas_SOM_SSIM_4x4.py            ← figura final
-
-Utilidades
-   ├── npy_a_csv.py                               ← convierte BMUs.npy a CSV con fechas
-   ├── extrae_meses_de_bmu.py                     ← exporta fechas por nodo a Excel
-   └── comparación_mapas_SSIM.py                  ← verificación manual de valores SSIM
-```
+**Start with [TUTORIAL.md](TUTORIAL.md).** It runs the whole pipeline end to end
+on a small synthetic dataset in about five minutes, so you can check that
+everything works before downloading the CHIRPS record.
 
 ---
 
-## Datos de entrada requeridos
+## Installation
 
-Los archivos de datos **no están incluidos** en el repositorio por su tamaño. Deben colocarse en la carpeta del proyecto con los siguientes nombres:
+```
+git clone https://github.com/ghuruguaya/som-ssim-precipitation.git
+cd som-ssim-precipitation
+pip install -r requirements.txt
+```
 
-| Archivo | Descripción | Fuente |
-|---------|-------------|--------|
-| `chirps_mensual.nc` | Precipitación mensual CHIRPS v2.0 (0.05°) | [CHIRPS](https://www.chc.ucsb.edu/data/chirps) |
-| `climatologia_mensual_1991_2020.nc` | Climatología mensual 1991–2020 | Generado desde CHIRPS |
-| `chirps_normalized.nc` | Anomalías normalizadas 0–1 (Oct–Mar) | Generado por `normalización_entre_0_y_1.py` |
-| `chirps_anom_oct_mar.nc` | Anomalías en mm (Oct–Mar) | Generado por `normalización_entre_0_y_1.py` |
+Python 3.9 or later. On Windows, `cartopy` installs more easily through conda:
+
+```
+conda install -c conda-forge cartopy
+```
+
+`fig01_study_region.py` additionally needs `geopandas`, `shapely` and
+`rasterio`. Without them it falls back to a plainer rendering rather than
+failing.
 
 ---
 
-## Orden de ejecución
+## Pipeline
 
-### Paso 1 — Preprocesamiento
-```bash
-python normalización_entre_0_y_1.py
-```
-Genera `chirps_normalized.nc` y `chirps_anom_oct_mar.nc`.
+Run in this order. Every script takes `--help`.
 
-### Paso 2 — Análisis de sensibilidad (fase exploratoria)
-Correr los 6 scripts `multiseed_*.py`. Cada uno entrena el SOM con una métrica e inicialización específica, para los tamaños de red 3×3, 4×4 y 6×6, con 12 semillas distintas. Cada script guarda los archivos `bmus_*.npy` y un CSV con los valores de Silhouette por semilla.
+### 1. Preprocessing
 
-### Paso 3 — Entrenamiento final (clúster Granito)
-```bash
-python som_ssim_granito_fixed.py \
-  --netcdf chirps_normalized.nc \
-  --grid 4 \
-  --init pca \
-  --epochs 10 \
-  --lr 0.4 \
-  --seed 145 \
-  --window 11 \
-  --sigma 1.5 \
-  --out som_results_ssim
-```
-Guarda: `BMUs.npy`, `weights.npy`, `valid_idx.npy`, `config.json`.
+| Script | Reads | Writes |
+|---|---|---|
+| `preprocess_anomalies.py` | Monthly CHIRPS, 1991–2020 climatology | `chirps_normalized.nc`, `chirps_anom_oct_mar.nc` |
 
-### Paso 4 — Métricas de validación
-```bash
-python calculo_metricas.py
-python indice_DBI_CHI.py
-python SSIM_por_nodo.py
-python SSIM_por_nodo_y_global_normalizado.py
-```
+Removes the linear trend pixel by pixel, computes anomalies against the monthly
+climatology, restricts the record to October–March, and rescales each pixel to
+[0, 1] with a Min–Max transformation. The normalization gives every field a
+common bounded range, so the SSIM dynamic range is L = 1.0 throughout.
 
-### Paso 5 — Figura 2 del paper
-Ejecutar en orden:
-```bash
-python promedio_amon_por_nodo.py
-python desnormalizar_BMU.py
-python mapas_promedios_desnormalizados_SSIMcompleto_4x4.py
-python union_de_mapas_SOM_SSIM_4x4.py
-```
+### 2. Exploratory phase
 
----
+Six combinations of BMU metric and initialization, each trained over three grid
+sizes and twelve seeds. All share `som_exploratory.py`.
 
-## Dependencias
+| Script | Metric | Initialization |
+|---|---|---|
+| `multiseed_euclidean_pca.py` | Euclidean | PCA |
+| `multiseed_euclidean_random.py` | Euclidean | random |
+| `multiseed_correlation_pca.py` | correlation | PCA |
+| `multiseed_correlation_random.py` | correlation | random |
+| `multiseed_ssim_pca.py` | global SSIM | PCA |
+| `multiseed_ssim_random.py` | global SSIM | random |
 
-```
-numpy
-xarray
-matplotlib
-cartopy
-scikit-learn
-scikit-image
-scipy
-pandas
-python-pptx  (opcional, para exportar PPT)
-tqdm         (opcional, para barra de progreso en Granito)
-```
+Each reads the normalized NetCDF and writes one BMU array per grid size and
+seed. They deliberately compute no validity indices: comparing metrics requires
+every partition to be evaluated under the same distance, which step 4 does.
 
-Instalación:
-```bash
-pip install numpy xarray matplotlib cartopy scikit-learn scikit-image scipy pandas python-pptx tqdm
-```
+Roughly one hour per script on the full dataset.
 
----
+### 3. Final training
 
-## Parámetros del entrenamiento final
+| Script | Reads | Writes |
+|---|---|---|
+| `train_som_full_ssim.py` | `chirps_normalized.nc` | `BMUs.npy`, `weights.npy`, `valid_idx.npy`, `config.json` |
+| `export_bmus_by_date.py` | the above | `..._BMUs_por_fecha.csv` |
 
-| Parámetro | Valor |
-|-----------|-------|
-| Métrica de BMU | SSIM completo (ventanas 11×11, σ = 1.5) |
-| Tamaño de red | 4×4 |
-| Inicialización | PCA |
-| Semilla | 145 |
-| Épocas | 10 |
-| Learning rate | 0.4 |
-| Período | Octubre–Marzo, 1981–2024 |
-| Dominio | 20°–40°S, 50°–65°O |
-| Datos | CHIRPS v2.0 (0.05°) |
-| Normalización | Min–Max por píxel (Oct–Mar) |
+Trains with the sliding-window SSIM as BMU criterion. `config.json` records
+every parameter actually used and is the authoritative account of a run.
 
----
+### 4. Evaluation
 
-## Nota sobre rutas
+| Script | Purpose |
+|---|---|
+| `recompute_validity_indices.py` | Silhouette, Davies–Bouldin, Calinski–Harabasz and node occupancy for every configuration |
+| `ssim_per_node.py` | mean SSIM between each field and the prototype of its node |
+| `ssim_per_node_and_global.py` | mean SSIM among the fields sharing a node |
+| `enso_statistics.py` | association between the classification and the ENSO phase |
 
-Los scripts usan rutas absolutas de Windows (`C:\Users\Gaby\Desktop\SOM\...`).
-Antes de correr, modificar la variable `BASE` (o equivalente) en la sección `CONFIG` de cada script.
+`recompute_validity_indices.py` is the central one. It reads the BMU
+assignments already stored on disk, so nothing is retrained, and reports the
+Silhouette coefficient under **both** Euclidean and correlation distance.
+
+That is the point of the script. The coefficient requires a distance to be
+specified, and that choice is not neutral with respect to the metric used for
+training: the ranking of metrics inverts completely depending on which distance
+is used to compute it. Node occupancy is a count, so it does not depend on any
+distance and can be compared across metrics.
+
+### 5. Figures
+
+All import `plot_style.py`, which holds the shared palette, typography and
+figure widths.
+
+| Script | Produces |
+|---|---|
+| `fig01_study_region.py` | Figure 1, study region |
+| `fig02_node_heatmap.py` | Figure 2, months per node |
+| `fig03_som_patterns.py` | Figure 3, the 16 nodes, mean and prototype |
+| `fig04_05_06_node_seasonality.py` | Figures 4, 5 and 6, seasonality |
+| `fig07_annual_composition_enso.py` | Figure 7, annual composition and ENSO |
+| `colorbar_graphical_abstract.py` | standalone colorbar |
+
+### Utilities
+
+| Script | Purpose |
+|---|---|
+| `make_sample_data.py` | generates the synthetic dataset used by the tutorial |
+| `export_months_by_node.py` | writes the months of each node to an Excel workbook |
 
 ---
 
-## Contacto
+## Data
 
-Gabriela Hernández — Universidad Nacional del Centro de la Provincia de Buenos Aires
+The scripts expect a NetCDF with dimensions `(time, latitude, longitude)`,
+monthly time steps, and NaN marking pixels outside the domain. The data variable
+is detected automatically; pass `--varname` to override.
+
+CHIRPS v2.0 monthly precipitation is available from the
+[Climate Hazards Center](https://www.chc.ucsb.edu/data/chirps). The files are
+too large to distribute here, which is why `make_sample_data.py` exists.
+
+`ENSO_ONI_DJF_1980_2023.csv` is included: the Oceanic Niño Index values are
+published by the [NOAA Climate Prediction Center](https://origin.cpc.ncep.noaa.gov/products/analysis_monitoring/ensostuff/ONI_v5.php).
+
+---
+
+## Computational requirements
+
+The tutorial runs on any laptop in a few minutes and needs well under 1 GB of
+memory.
+
+The full dataset is another matter. Each of the 264 fields holds 89 544 land
+pixels, about 90 MB in single precision, which is manageable. What is expensive
+is the sliding-window SSIM, which must be evaluated between every field and
+every prototype at every presentation. The final training reported in the paper
+was carried out on a computing cluster. The exploratory phase, which uses only
+global metrics, runs on a desktop machine.
+
+---
+
+## Citation
+
+If you use this code, please cite the paper and the archived release:
+
+> Hernández, G., Müller, G. V., Vasconcellos, F. C., Vasconcellos, E. C.
+> Evaluation of Similarity Metrics for Self-Organizing Maps of Summer
+> Precipitation Anomalies in Eastern Subtropical South America. Under review.
+
+Archived on Zenodo: https://doi.org/10.5281/zenodo.20287660
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Contact
+
+Gabriela Hernández — Universidad Nacional del Centro de la Provincia de
+Buenos Aires (UNCPBA), Argentina.

@@ -1,0 +1,35 @@
+# Dependencies for the SOM-SSIM precipitation classification pipeline.
+#
+# Install with:
+#     pip install -r requirements.txt
+#
+# Lower bounds rather than exact pins: the pipeline uses stable, long-standing
+# APIs in all of these packages, so newer versions are expected to work. The
+# bounds mark the oldest release known to be compatible.
+#
+# On Windows, cartopy is easier to install through conda than pip, since it
+# depends on the GEOS and PROJ system libraries:
+#     conda install -c conda-forge cartopy
+
+# --- Core numerics and data handling -----------------------------------------
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+
+# --- NetCDF input and output --------------------------------------------------
+xarray>=2023.1
+netCDF4>=1.6
+
+# --- Clustering validity indices ----------------------------------------------
+scikit-learn>=1.2
+
+# --- Figures ------------------------------------------------------------------
+matplotlib>=3.7
+cartopy>=0.22
+
+# --- Optional -----------------------------------------------------------------
+# Progress bar during SOM training. The pipeline runs without it.
+tqdm>=4.65
+
+# Writing the per-node month lists to Excel (export_months_by_node.py).
+openpyxl>=3.1
